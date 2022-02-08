@@ -3,28 +3,36 @@ module github.com/getamis/alice
 go 1.13
 
 require (
-	github.com/btcsuite/btcd v0.20.1-beta
+	github.com/Kubuxu/go-os-helper v0.0.1 // indirect
+	github.com/boltdb/bolt v1.3.1 // indirect
+	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/getamis/sirius v1.1.7
+	github.com/gin-gonic/gin v1.7.7
+	github.com/go-check/check v0.0.0-20180628173108-788fd7840127 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
-	github.com/golang/protobuf v1.5.0
+	github.com/gobwas/ws v1.1.0 // indirect
+	github.com/golang/protobuf v1.5.2
+	github.com/google/uuid v1.3.0
 	github.com/hpcloud/tail v1.0.1-0.20180514194441-a1dbeea552b7 // indirect
-	github.com/libp2p/go-libp2p v0.7.0
-	github.com/libp2p/go-libp2p-core v0.5.0
+	github.com/jackpal/gateway v1.0.5 // indirect
+	github.com/libp2p/go-libp2p v0.17.0
+	github.com/libp2p/go-libp2p-core v0.13.0
+	github.com/libp2p/go-libp2p-peer v0.2.0 // indirect
+	github.com/libp2p/go-libp2p-secio v0.2.1 // indirect
+	github.com/libp2p/go-stream-muxer v0.0.1 // indirect
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
-	github.com/multiformats/go-multiaddr v0.2.1
-	github.com/onsi/ginkgo v1.12.0
-	github.com/onsi/gomega v1.9.0
+	github.com/multiformats/go-multiaddr v0.4.0
+	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/gomega v1.13.0
 	github.com/rollbar/rollbar-go v1.2.0 // indirect
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.3.2
-	github.com/stretchr/testify v1.4.0
-	go.uber.org/atomic v1.5.1 // indirect
-	go.uber.org/zap v1.13.0 // indirect
-	golang.org/x/crypto v0.0.0-20200221231518-2aa609cf4a9d
-	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
-	golang.org/x/tools v0.0.0-20200129045341-207d3de1faaf // indirect
+	github.com/stretchr/testify v1.7.0
+	github.com/whyrusleeping/go-logging v0.0.1 // indirect
+	github.com/whyrusleeping/mafmt v1.2.8 // indirect
+	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
 	gonum.org/v1/gonum v0.7.0
-	google.golang.org/protobuf v1.26.0
+	google.golang.org/protobuf v1.27.1
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
-	gopkg.in/yaml.v2 v2.2.4
+	gopkg.in/yaml.v2 v2.4.0
 )
