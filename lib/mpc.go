@@ -27,6 +27,7 @@ var once sync.Once
 
 type DkgSession struct {
 	id         string
+	nodeid     string
 	peers      map[string]*PeerInfo
 	dkg        *dkg.DKG
 	done       chan struct{}
@@ -37,8 +38,8 @@ type DkgSession struct {
 }
 
 type PeerInfo struct {
-	id   string
-	rank uint32
+	Id   string `json:"id"`
+	Rank uint32 `json:"rank"`
 }
 
 type ActiveSessions struct {
@@ -86,11 +87,11 @@ func (p *DkgSession) PeerIDs() []string {
 }
 
 func (p *DkgSession) SelfID() string {
-	return p.id
+	return p.nodeid
 }
 
 func (p *DkgSession) MustSend(peerid string, message interface{}) {
-	println("MustSend........................" + getActiveSessions().pipeFile.Name())
+	println("MustSend........................" + peerid)
 
 	msg, _ := message.(proto.Message)
 	bs, err := proto.Marshal(msg)
@@ -103,7 +104,7 @@ func (p *DkgSession) MustSend(peerid string, message interface{}) {
 	if err != nil {
 		println("Cannot marshal message : " + err.Error())
 	} else {
-		getActiveSessions().pipeFile.WriteString(p.id + ":" + peerid + ":" + msgId + "\n")
+		getActiveSessions().pipeFile.WriteString("dkground:" + p.id + ":" + peerid + ":" + msgId + "\n")
 	}
 }
 
@@ -122,13 +123,16 @@ func (p *DkgSession) OnStateChanged(oldState types.MainState, newState types.Mai
 	} else if newState == types.StateDone {
 		println("Dkg done", "old", oldState.String(), "new", newState.String())
 		result, err := p.dkg.GetResult()
+		var status = "result_success"
 		if err == nil {
 			p.fetchDKGResult(result)
 		} else {
 			println("Failed to get result from DKG", "err", err)
+			status = "result_failure"
 		}
 		close(p.done)
-		//p.dkg.Stop()
+		p.dkg.Stop()
+		getActiveSessions().pipeFile.WriteString(status + ":" + p.id + "\n")
 		return
 	}
 	println("State changed", "old", oldState.String(), "new", newState.String())
@@ -153,14 +157,17 @@ func (p *DkgSession) fetchDKGResult(result *dkg.Result) {
 }
 
 //export NewDkgSession
-func NewDkgSession(s *C.char, threshold int, rank int, json *C.char) {
+func NewDkgSession(s *C.char, n *C.char, threshold int, rank int, jsoncstr *C.char) {
 	sessionid := deepCopy(C.GoString(s))
-	peerJsonStr := deepCopy(C.GoString(json))
+	peerJsonStr := deepCopy(C.GoString(jsoncstr))
+	nodeid := deepCopy(C.GoString(n))
 
 	println("NewDkgSession........................" + sessionid)
+	println(peerJsonStr)
 
 	defer C.free(unsafe.Pointer(s))
-	defer C.free(unsafe.Pointer(json))
+	defer C.free(unsafe.Pointer(jsoncstr))
+	defer C.free(unsafe.Pointer(n))
 
 	session := &DkgSession{
 		id:         sessionid,
@@ -169,8 +176,22 @@ func NewDkgSession(s *C.char, threshold int, rank int, json *C.char) {
 		rank:       rank,
 		peers:      make(map[string]*PeerInfo),
 		messageBox: make(map[string]*dkg.Message),
+		nodeid:     nodeid,
 	}
 	getActiveSessions().sessions[sessionid] = session
+	// Unmarshall
+	var pi []PeerInfo
+	json.Unmarshal([]byte(peerJsonStr), &pi)
+	for i := 0; i < len(pi); i++ {
+		println(pi[i].Id + " - " + string(pi[i].Rank))
+		session.peers[pi[i].Id] = &pi[i]
+	}
+	dkg, err := dkg.NewDKG(btcec.S256(), session, uint32(session.threshold), uint32(session.rank), session)
+	if err != nil {
+		println(err.Error())
+	}
+	session.dkg = dkg
+
 }
 
 func deepCopy(s string) string {
@@ -192,8 +213,8 @@ func AddPeer(s *C.char, p *C.char, peerrank int) {
 	defer C.free(unsafe.Pointer(p))
 
 	getActiveSessions().sessions[sessionid].peers[peerid] = &PeerInfo{
-		id:   peerid,
-		rank: uint32(peerrank),
+		Id:   peerid,
+		Rank: uint32(peerrank),
 	}
 	println("addPeer")
 }
@@ -300,22 +321,29 @@ func InitDkg(s *C.char) {
 }
 
 //export GenerateKey
-func GenerateKey(s *C.char) *C.char {
+func GenerateKey(s *C.char) {
 	sessionid := deepCopy(C.GoString(s))
 	session := getActiveSessions().sessions[sessionid]
 	defer C.free(unsafe.Pointer(s))
 	println("Generate Key........................" + getActiveSessions().pipeFile.Name())
 	// 1. Start a DKG process.
 	session.dkg.Start()
-	println("---------------->")
-	defer session.dkg.Stop()
-	// 2. Wait the dkg is done or failed
-	<-session.done
+}
+
+//export GetResult
+func GetResult(s *C.char, m *C.char) *C.char {
+	sessionid := deepCopy(C.GoString(s))
+	session := getActiveSessions().sessions[sessionid]
+	defer C.free(unsafe.Pointer(s))
+	if session.result == nil {
+		return C.CString(string("{}"))
+	}
 	jsonbytes, err := json.Marshal(session.result)
 	if err != nil {
 		return C.CString(string("{}"))
 	}
 	return C.CString(string(jsonbytes))
+
 }
 
 func main() {
