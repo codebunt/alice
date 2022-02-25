@@ -56,4 +56,10 @@ PHONY += tss-example
 tss-example:
 	cd example && go build
 
+tss-wasm:
+	cd wasm && GOARCH=wasm GOOS=js go build -o ../bin/mpc.wasm mpc.go  
+
+tss-lib:
+	cd lib && go build -buildmode=c-shared -o ../bin/mpc.so mpc.go  
+
 .PHONY: $(PHONY)

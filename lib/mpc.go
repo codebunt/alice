@@ -91,8 +91,6 @@ func (p *DkgSession) SelfID() string {
 }
 
 func (p *DkgSession) MustSend(peerid string, message interface{}) {
-	println("MustSend........................" + peerid)
-
 	msg, _ := message.(proto.Message)
 	bs, err := proto.Marshal(msg)
 	// probably unncessary
@@ -114,8 +112,6 @@ func (p *DkgSession) getMessageId(peerid string, msg *dkg.Message) string {
 }
 
 func (p *DkgSession) OnStateChanged(oldState types.MainState, newState types.MainState) {
-	println("OnStateChanged........................" + getActiveSessions().pipeFile.Name())
-
 	if newState == types.StateFailed {
 		println("Dkg failed", "old", oldState.String(), "new", newState.String())
 		close(p.done)
@@ -155,6 +151,8 @@ func (p *DkgSession) fetchDKGResult(result *dkg.Result) {
 	}
 	p.result = dkgResult
 }
+
+// Exposed Methods
 
 //export NewDkgSession
 func NewDkgSession(s *C.char, n *C.char, threshold int, rank int, jsoncstr *C.char) {
@@ -305,19 +303,6 @@ func printsessions() {
 		println("-----" + k)
 	}
 
-}
-
-//export InitDkg
-func InitDkg(s *C.char) {
-	sessionid := deepCopy(C.GoString(s))
-	println("HandleMessage........................" + sessionid)
-	session := getActiveSessions().sessions[sessionid]
-	defer C.free(unsafe.Pointer(s))
-	dkg, err := dkg.NewDKG(btcec.S256(), session, uint32(session.threshold), uint32(session.rank), session)
-	if err != nil {
-		println(err.Error())
-	}
-	session.dkg = dkg
 }
 
 //export GenerateKey
