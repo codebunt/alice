@@ -239,7 +239,6 @@ func (p *dkgsession) fetchDKGResult(id string, result *dkg.Result) {
 		}
 	}
 	WriteYamlFile(dkgResult, getFilePath(p.node.id+"_"+p.id))
-
 }
 
 func WriteYamlFile(yamlData interface{}, filePath string) error {
