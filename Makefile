@@ -60,6 +60,6 @@ tss-wasm:
 	cd wasm && GOARCH=wasm GOOS=js go build -o ../bin/mpc.wasm mpc.go  
 
 tss-lib:
-	cd lib && go build -buildmode=c-shared -o ../bin/mpc.so mpc.go  
+	cd lib && GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -buildmode=c-shared -o ../bin/mpc.so mpc.go  
 
 .PHONY: $(PHONY)

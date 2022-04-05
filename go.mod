@@ -6,6 +6,7 @@ require (
 	github.com/Kubuxu/go-os-helper v0.0.1 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/btcsuite/btcd v0.22.0-beta
+	github.com/codebunt/dart_api_dl v0.0.3-0.20220405090829-9b9746cce6e6 // indirect
 	github.com/getamis/sirius v1.1.7
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-check/check v0.0.0-20180628173108-788fd7840127 // indirect

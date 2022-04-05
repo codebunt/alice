@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/codebunt/dart_api_dl"
+
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/getamis/alice/crypto/tss/dkg"
 	"github.com/getamis/alice/internal/message/types"
@@ -43,8 +45,10 @@ type PeerInfo struct {
 }
 
 type ActiveSessions struct {
-	sessions map[string]*DkgSession
-	pipeFile *os.File
+	sessions     map[string]*DkgSession
+	pipeFile     *os.File
+	callbackType string
+	port         int64
 }
 
 type DKGResult struct {
@@ -102,7 +106,13 @@ func (p *DkgSession) MustSend(peerid string, message interface{}) {
 	if err != nil {
 		println("Cannot marshal message : " + err.Error())
 	} else {
-		getActiveSessions().pipeFile.WriteString("dkground:" + p.id + ":" + peerid + ":" + msgId + "\n")
+		if getActiveSessions().callbackType == "PIPE" {
+			getActiveSessions().pipeFile.WriteString("dkground:" + p.id + ":" + peerid + ":" + msgId + "\n")
+		}
+		if getActiveSessions().callbackType == "DART_PORT" {
+			dart_api_dl.SendToPort(getActiveSessions().port, "dkground", p.id, peerid, msgId)
+		}
+
 	}
 }
 
@@ -128,7 +138,13 @@ func (p *DkgSession) OnStateChanged(oldState types.MainState, newState types.Mai
 		}
 		close(p.done)
 		p.dkg.Stop()
-		getActiveSessions().pipeFile.WriteString(status + ":" + p.id + "\n")
+		if getActiveSessions().callbackType == "PIPE" {
+			getActiveSessions().pipeFile.WriteString(status + ":" + p.id + "\n")
+		}
+		if getActiveSessions().callbackType == "DART_PORT" {
+			dart_api_dl.SendToPort(getActiveSessions().port, status, p.id, "", "")
+		}
+
 		return
 	}
 	println("State changed", "old", oldState.String(), "new", newState.String())
@@ -232,6 +248,7 @@ func Initialize(s *C.char) int {
 		return 0
 	}
 	getActiveSessions().pipeFile = f
+	getActiveSessions().callbackType = "PIPE"
 	if err != nil {
 		println("Make named pipe file error:", err.Error())
 		return 0
@@ -239,9 +256,17 @@ func Initialize(s *C.char) int {
 	return 1
 }
 
+//export InitializeDL
+func InitializeDL(api unsafe.Pointer, port int64) int {
+	getActiveSessions().callbackType = "DART_PORT"
+	dart_api_dl.Init(api)
+	getActiveSessions().port = port
+	return 1
+}
+
 //export GetMessage
 func GetMessage(s *C.char, m *C.char) *C.char {
-	println("GetMessage........................" + getActiveSessions().pipeFile.Name())
+	println("GetMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
 	defer C.free(unsafe.Pointer(s))
@@ -256,13 +281,14 @@ func GetMessage(s *C.char, m *C.char) *C.char {
 
 	jsoncstr := C.CString(string(jsonstr))
 	// defer C.free(unsafe.Pointer(jsoncstr))
+	println("end GetMessage........................" + getActiveSessions().callbackType)
 
 	return jsoncstr
 }
 
 //export HandleMessage
 func HandleMessage(s *C.char, m *C.char) *C.char {
-	println("HandleMessage........................" + getActiveSessions().pipeFile.Name())
+	println("HandleMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
 	defer C.free(unsafe.Pointer(s))
@@ -310,13 +336,13 @@ func GenerateKey(s *C.char) {
 	sessionid := deepCopy(C.GoString(s))
 	session := getActiveSessions().sessions[sessionid]
 	defer C.free(unsafe.Pointer(s))
-	println("Generate Key........................" + getActiveSessions().pipeFile.Name())
+	println("Generate Key........................" + getActiveSessions().callbackType)
 	// 1. Start a DKG process.
 	session.dkg.Start()
 }
 
 //export GetResult
-func GetResult(s *C.char, m *C.char) *C.char {
+func GetResult(s *C.char) *C.char {
 	sessionid := deepCopy(C.GoString(s))
 	session := getActiveSessions().sessions[sessionid]
 	defer C.free(unsafe.Pointer(s))
@@ -328,7 +354,6 @@ func GetResult(s *C.char, m *C.char) *C.char {
 		return C.CString(string("{}"))
 	}
 	return C.CString(string(jsonbytes))
-
 }
 
 func main() {
