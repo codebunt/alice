@@ -6,8 +6,8 @@ package main
 import "C"
 
 import (
-	"encoding/base32"
 	"encoding/json"
+	"log"
 	"os"
 	"reflect"
 	"strings"
@@ -20,6 +20,8 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/getamis/alice/crypto/tss/dkg"
 	"github.com/getamis/alice/internal/message/types"
+	kommons "github.com/getamis/alice/lib/commons"
+	ksigner "github.com/getamis/alice/lib/signer"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -28,15 +30,16 @@ var instance *ActiveSessions
 var once sync.Once
 
 type DkgSession struct {
-	id         string
-	nodeid     string
-	peers      map[string]*PeerInfo
-	dkg        *dkg.DKG
-	done       chan struct{}
-	threshold  int
-	rank       int
-	messageBox map[string]*dkg.Message
-	result     *DKGResult
+	id           string
+	nodeid       string
+	peers        map[string]*PeerInfo
+	dkg          *dkg.DKG
+	done         chan struct{}
+	threshold    int
+	rank         int
+	messageBox   map[string]*dkg.Message
+	incomingMsgs map[string]*dkg.Message
+	result       *kommons.DKGResult
 }
 
 type PeerInfo struct {
@@ -49,22 +52,7 @@ type ActiveSessions struct {
 	pipeFile     *os.File
 	callbackType string
 	port         int64
-}
-
-type DKGResult struct {
-	Share  string        `json:"share"`
-	Pubkey Pubkey        `json:"pubkey"`
-	BKs    map[string]BK `json:"bks"`
-}
-
-type Pubkey struct {
-	X string `json:"x"`
-	Y string `json:"y"`
-}
-
-type BK struct {
-	X    string `json:"x"`
-	Rank uint32 `json:"rank"`
+	logfile      *os.File
 }
 
 func getActiveSessions() *ActiveSessions {
@@ -101,8 +89,9 @@ func (p *DkgSession) MustSend(peerid string, message interface{}) {
 	x := &dkg.Message{}
 	proto.Unmarshal(bs, x)
 	msgId := p.getMessageId(peerid, x)
-	println(msgId)
+	println(x.Type)
 	p.messageBox[msgId] = x
+	logtofile("Sending \n" + msgId)
 	if err != nil {
 		println("Cannot marshal message : " + err.Error())
 	} else {
@@ -117,8 +106,7 @@ func (p *DkgSession) MustSend(peerid string, message interface{}) {
 }
 
 func (p *DkgSession) getMessageId(peerid string, msg *dkg.Message) string {
-	data := []byte(msg.Id + "_" + peerid + "_" + msg.Type.String())
-	return base32.StdEncoding.EncodeToString(data)
+	return msg.Type.String() + "_" + peerid
 }
 
 func (p *DkgSession) OnStateChanged(oldState types.MainState, newState types.MainState) {
@@ -151,16 +139,16 @@ func (p *DkgSession) OnStateChanged(oldState types.MainState, newState types.Mai
 }
 
 func (p *DkgSession) fetchDKGResult(result *dkg.Result) {
-	dkgResult := &DKGResult{
+	dkgResult := &kommons.DKGResult{
 		Share: result.Share.String(),
-		Pubkey: Pubkey{
+		Pubkey: kommons.Pubkey{
 			X: result.PublicKey.GetX().String(),
 			Y: result.PublicKey.GetY().String(),
 		},
-		BKs: make(map[string]BK),
+		BKs: make(map[string]kommons.BK),
 	}
 	for peerID, bk := range result.Bks {
-		dkgResult.BKs[peerID] = BK{
+		dkgResult.BKs[peerID] = kommons.BK{
 			X:    bk.GetX().String(),
 			Rank: bk.GetRank(),
 		}
@@ -169,7 +157,7 @@ func (p *DkgSession) fetchDKGResult(result *dkg.Result) {
 }
 
 // Exposed Methods
-
+// DISTRIBUTED KEY GEN
 //export NewDkgSession
 func NewDkgSession(s *C.char, n *C.char, threshold int, rank int, jsoncstr *C.char) {
 	sessionid := deepCopy(C.GoString(s))
@@ -184,13 +172,14 @@ func NewDkgSession(s *C.char, n *C.char, threshold int, rank int, jsoncstr *C.ch
 	defer C.free(unsafe.Pointer(n))
 
 	session := &DkgSession{
-		id:         sessionid,
-		done:       make(chan struct{}),
-		threshold:  threshold,
-		rank:       rank,
-		peers:      make(map[string]*PeerInfo),
-		messageBox: make(map[string]*dkg.Message),
-		nodeid:     nodeid,
+		id:           sessionid,
+		done:         make(chan struct{}),
+		threshold:    threshold,
+		rank:         rank,
+		peers:        make(map[string]*PeerInfo),
+		messageBox:   make(map[string]*dkg.Message),
+		incomingMsgs: make(map[string]*dkg.Message),
+		nodeid:       nodeid,
 	}
 	getActiveSessions().sessions[sessionid] = session
 	// Unmarshall
@@ -253,7 +242,23 @@ func Initialize(s *C.char) int {
 		println("Make named pipe file error:", err.Error())
 		return 0
 	}
+
+	initlog(pipeFile + ".log")
+
 	return 1
+}
+
+func initlog(filename string) {
+	logfile, err := os.Create(filename + ".log")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	getActiveSessions().logfile = logfile
+}
+
+func logtofile(msg string) {
+	getActiveSessions().logfile.WriteString(msg + "\n")
 }
 
 //export InitializeDL
@@ -261,6 +266,7 @@ func InitializeDL(api unsafe.Pointer, port int64) int {
 	getActiveSessions().callbackType = "DART_PORT"
 	dart_api_dl.Init(api)
 	getActiveSessions().port = port
+	initlog("dartmpc.log")
 	return 1
 }
 
@@ -275,8 +281,13 @@ func GetMessage(s *C.char, m *C.char) *C.char {
 	defer C.free(unsafe.Pointer(m))
 
 	bs := getActiveSessions().sessions[sessionid].messageBox[msgid]
-	println(bs)
-	jsonstr, _ := protojson.Marshal(bs)
+	println(bs.Type)
+	mOptions := protojson.MarshalOptions{
+		Multiline:       true,
+		EmitUnpopulated: true,
+	}
+	jsonstr, _ := mOptions.Marshal(bs)
+
 	println(string(jsonstr))
 
 	jsoncstr := C.CString(string(jsonstr))
@@ -308,8 +319,17 @@ func HandleMessage(s *C.char, m *C.char) *C.char {
 		defer C.free(unsafe.Pointer(errstr))
 		return errstr
 	}
+	println(x.Type.String() + "_" + x.Id)
+	if getActiveSessions().sessions[sessionid].incomingMsgs[x.Type.String()+"_"+x.Id] != nil {
+		logtofile("Already handled \n" + x.Type.String() + "_" + x.Id)
+		errstr := C.CString("Already handled \n" + x.Type.String() + "_" + x.Id)
+		defer C.free(unsafe.Pointer(errstr))
+		return errstr
+	}
 	printsessions()
 	err = getActiveSessions().sessions[sessionid].dkg.AddMessage(x)
+	getActiveSessions().sessions[sessionid].incomingMsgs[x.Type.String()+"_"+x.Id] = x
+	logtofile("Handled \n" + x.Type.String() + "_" + x.Id)
 
 	if err != nil {
 		println("Cannot add message to DKG", "err", err)
@@ -354,6 +374,101 @@ func GetResult(s *C.char) *C.char {
 		return C.CString(string("{}"))
 	}
 	return C.CString(string(jsonbytes))
+}
+
+// SIGNER
+//export InitializeSignerWithPipe
+func InitializeSignerWithPipe(s *C.char) int {
+	pipeFile := deepCopy(C.GoString(s))
+	println("Initialize........................" + pipeFile)
+
+	defer C.free(unsafe.Pointer(s))
+	// os.Remove(pipeFile)
+	// syscall.Mkfifo(pipeFile, 0666)
+
+	f, err := os.OpenFile(pipeFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	if err != nil {
+		println("error opening file: " + err.Error())
+		return 0
+	}
+	if err != nil {
+		println("Make named pipe file error:", err.Error())
+		return 0
+	}
+	ksigner.InitializeWithPipe(f)
+	return 1
+}
+
+//export InitializeSignerWithPort
+func InitializeSignerWithPort(api unsafe.Pointer, port int64) int {
+	dart_api_dl.Init(api)
+	ksigner.InitializeSignerWithPort(port)
+	return 1
+}
+
+//export NewSignerSession
+func NewSignerSession(s *C.char, n *C.char, shareJson *C.char, messageToSign *C.char) {
+	sessionid := deepCopy(C.GoString(s))
+	messageToSignStr := deepCopy(C.GoString(messageToSign))
+	shareJsonStr := deepCopy(C.GoString(shareJson))
+	nodeid := deepCopy(C.GoString(n))
+	println("NewSignerSession........................" + sessionid)
+	println(messageToSign)
+	ksigner.NewSignerSession(sessionid, nodeid, shareJsonStr, messageToSignStr)
+	defer C.free(unsafe.Pointer(s))
+	defer C.free(unsafe.Pointer(messageToSign))
+	defer C.free(unsafe.Pointer(shareJson))
+	defer C.free(unsafe.Pointer(n))
+}
+
+//export GetSignerMessage
+func GetSignerMessage(s *C.char, m *C.char) *C.char {
+	println("GetSignerMessage........................" + getActiveSessions().callbackType)
+
+	sessionid := deepCopy(C.GoString(s))
+	defer C.free(unsafe.Pointer(s))
+
+	msgid := deepCopy(C.GoString(m))
+	defer C.free(unsafe.Pointer(m))
+
+	jsoncstr := C.CString(ksigner.GetMessage(sessionid, msgid))
+	// TODO
+	// defer C.free(unsafe.Pointer(jsoncstr))
+	println("end GetSignerMessage........................")
+
+	return jsoncstr
+}
+
+//export HandleSignerMessage
+func HandleSignerMessage(s *C.char, m *C.char) *C.char {
+	println("HandleMessage........................" + getActiveSessions().callbackType)
+
+	sessionid := deepCopy(C.GoString(s))
+	defer C.free(unsafe.Pointer(s))
+	println(sessionid)
+
+	body := deepCopy(C.GoString(m))
+	defer C.free(unsafe.Pointer(m))
+	println(body)
+
+	err := ksigner.HandleMessage(sessionid, body)
+
+	errstr := C.CString(err)
+	defer C.free(unsafe.Pointer(errstr))
+	return errstr
+}
+
+//export Sign
+func Sign(s *C.char) {
+	sessionid := deepCopy(C.GoString(s))
+	ksigner.Sign(sessionid)
+}
+
+//export GetSignerResult
+func GetSignerResult(s *C.char) *C.char {
+	sessionid := deepCopy(C.GoString(s))
+	defer C.free(unsafe.Pointer(s))
+	return C.CString(string(ksigner.GetResult(sessionid)))
 }
 
 func main() {
