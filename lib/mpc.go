@@ -227,7 +227,6 @@ func Initialize(s *C.char) int {
 	pipeFile := deepCopy(C.GoString(s))
 	println("Initialize........................" + pipeFile)
 
-	defer C.free(unsafe.Pointer(s))
 	os.Remove(pipeFile)
 	syscall.Mkfifo(pipeFile, 0666)
 
@@ -244,6 +243,9 @@ func Initialize(s *C.char) int {
 	}
 
 	initlog(pipeFile + ".log")
+	println("Free pointer")
+	C.free(unsafe.Pointer(s))
+	println("Initialize........................ Done")
 
 	return 1
 }
@@ -415,10 +417,10 @@ func NewSignerSession(s *C.char, n *C.char, shareJson *C.char, messageToSign *C.
 	println("NewSignerSession........................" + sessionid)
 	println(messageToSign)
 	ksigner.NewSignerSession(sessionid, nodeid, shareJsonStr, messageToSignStr)
-	defer C.free(unsafe.Pointer(s))
-	defer C.free(unsafe.Pointer(messageToSign))
-	defer C.free(unsafe.Pointer(shareJson))
-	defer C.free(unsafe.Pointer(n))
+	C.free(unsafe.Pointer(s))
+	C.free(unsafe.Pointer(messageToSign))
+	C.free(unsafe.Pointer(shareJson))
+	C.free(unsafe.Pointer(n))
 }
 
 //export GetSignerMessage
@@ -426,16 +428,15 @@ func GetSignerMessage(s *C.char, m *C.char) *C.char {
 	println("GetSignerMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
-	defer C.free(unsafe.Pointer(s))
 
 	msgid := deepCopy(C.GoString(m))
-	defer C.free(unsafe.Pointer(m))
 
 	jsoncstr := C.CString(ksigner.GetMessage(sessionid, msgid))
 	// TODO
 	// defer C.free(unsafe.Pointer(jsoncstr))
 	println("end GetSignerMessage........................")
-
+	//C.free(unsafe.Pointer(s))
+	//C.free(unsafe.Pointer(m))
 	return jsoncstr
 }
 
@@ -444,17 +445,17 @@ func HandleSignerMessage(s *C.char, m *C.char) *C.char {
 	println("HandleMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
-	defer C.free(unsafe.Pointer(s))
+	// defer C.free(unsafe.Pointer(s))
 	println(sessionid)
 
 	body := deepCopy(C.GoString(m))
-	defer C.free(unsafe.Pointer(m))
+	// defer C.free(unsafe.Pointer(m))
 	println(body)
 
 	err := ksigner.HandleMessage(sessionid, body)
 
 	errstr := C.CString(err)
-	defer C.free(unsafe.Pointer(errstr))
+	// defer C.free(unsafe.Pointer(errstr))
 	return errstr
 }
 
