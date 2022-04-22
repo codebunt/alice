@@ -6,13 +6,14 @@ package main
 import "C"
 
 import (
+	bufio "bufio"
 	"encoding/json"
-	"log"
+	"net"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"unsafe"
 
 	"github.com/codebunt/dart_api_dl"
@@ -53,6 +54,7 @@ type ActiveSessions struct {
 	callbackType string
 	port         int64
 	logfile      *os.File
+	tcpwriter    *bufio.Writer
 }
 
 func getActiveSessions() *ActiveSessions {
@@ -91,12 +93,15 @@ func (p *DkgSession) MustSend(peerid string, message interface{}) {
 	msgId := p.getMessageId(peerid, x)
 	println(x.Type)
 	p.messageBox[msgId] = x
-	logtofile("Sending \n" + msgId)
 	if err != nil {
 		println("Cannot marshal message : " + err.Error())
 	} else {
 		if getActiveSessions().callbackType == "PIPE" {
 			getActiveSessions().pipeFile.WriteString("dkground:" + p.id + ":" + peerid + ":" + msgId + "\n")
+		}
+		if getActiveSessions().callbackType == "TCP" {
+			getActiveSessions().tcpwriter.WriteString("dkground:" + p.id + ":" + peerid + ":" + msgId + "\n")
+			getActiveSessions().tcpwriter.Flush()
 		}
 		if getActiveSessions().callbackType == "DART_PORT" {
 			dart_api_dl.SendToPort(getActiveSessions().port, "dkground", p.id, peerid, msgId)
@@ -128,6 +133,10 @@ func (p *DkgSession) OnStateChanged(oldState types.MainState, newState types.Mai
 		p.dkg.Stop()
 		if getActiveSessions().callbackType == "PIPE" {
 			getActiveSessions().pipeFile.WriteString(status + ":" + p.id + "\n")
+		}
+		if getActiveSessions().callbackType == "TCP" {
+			getActiveSessions().tcpwriter.WriteString(status + ":" + p.id + "\n")
+			getActiveSessions().tcpwriter.Flush()
 		}
 		if getActiveSessions().callbackType == "DART_PORT" {
 			dart_api_dl.SendToPort(getActiveSessions().port, status, p.id, "", "")
@@ -223,44 +232,18 @@ func AddPeer(s *C.char, p *C.char, peerrank int) {
 }
 
 //export Initialize
-func Initialize(s *C.char) int {
-	pipeFile := deepCopy(C.GoString(s))
-	println("Initialize........................" + pipeFile)
-
-	os.Remove(pipeFile)
-	syscall.Mkfifo(pipeFile, 0666)
-
-	f, err := os.OpenFile(pipeFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+func Initialize(port int) int {
+	println("Initialize............." + strconv.Itoa(port))
+	c, err := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		println("error opening file: " + err.Error())
+		println("client, Dial" + err.Error())
 		return 0
 	}
-	getActiveSessions().pipeFile = f
-	getActiveSessions().callbackType = "PIPE"
-	if err != nil {
-		println("Make named pipe file error:", err.Error())
-		return 0
-	}
-
-	initlog(pipeFile + ".log")
-	println("Free pointer")
-	C.free(unsafe.Pointer(s))
+	getActiveSessions().tcpwriter = bufio.NewWriter(c)
+	getActiveSessions().callbackType = "TCP"
+	ksigner.InitializeWithTCPConnection(bufio.NewWriter(c))
 	println("Initialize........................ Done")
-
 	return 1
-}
-
-func initlog(filename string) {
-	logfile, err := os.Create(filename + ".log")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	getActiveSessions().logfile = logfile
-}
-
-func logtofile(msg string) {
-	getActiveSessions().logfile.WriteString(msg + "\n")
 }
 
 //export InitializeDL
@@ -268,7 +251,6 @@ func InitializeDL(api unsafe.Pointer, port int64) int {
 	getActiveSessions().callbackType = "DART_PORT"
 	dart_api_dl.Init(api)
 	getActiveSessions().port = port
-	initlog("dartmpc.log")
 	return 1
 }
 
@@ -323,7 +305,6 @@ func HandleMessage(s *C.char, m *C.char) *C.char {
 	}
 	println(x.Type.String() + "_" + x.Id)
 	if getActiveSessions().sessions[sessionid].incomingMsgs[x.Type.String()+"_"+x.Id] != nil {
-		logtofile("Already handled \n" + x.Type.String() + "_" + x.Id)
 		errstr := C.CString("Already handled \n" + x.Type.String() + "_" + x.Id)
 		defer C.free(unsafe.Pointer(errstr))
 		return errstr
@@ -331,7 +312,6 @@ func HandleMessage(s *C.char, m *C.char) *C.char {
 	printsessions()
 	err = getActiveSessions().sessions[sessionid].dkg.AddMessage(x)
 	getActiveSessions().sessions[sessionid].incomingMsgs[x.Type.String()+"_"+x.Id] = x
-	logtofile("Handled \n" + x.Type.String() + "_" + x.Id)
 
 	if err != nil {
 		println("Cannot add message to DKG", "err", err)

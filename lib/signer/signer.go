@@ -6,6 +6,7 @@ package signer
 import "C"
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"math/big"
@@ -50,6 +51,7 @@ type ActiveSessions struct {
 	pipeFile     *os.File
 	callbackType string
 	port         int64
+	tcpwriter	 *bufio.Writer
 }
 
 type SignerResult struct {
@@ -99,6 +101,10 @@ func (p *SignerSession) MustSend(peerid string, message interface{}) {
 		if GetActiveSessions().callbackType == "PIPE" {
 			GetActiveSessions().pipeFile.WriteString("signerround:" + p.id + ":" + peerid + ":" + msgId + "\n")
 		}
+		if GetActiveSessions().callbackType == "TCP" {
+			GetActiveSessions().tcpwriter.WriteString("signerround:" + p.id + ":" + peerid + ":" + msgId + "\n")
+			GetActiveSessions().tcpwriter.Flush()
+		}
 		if GetActiveSessions().callbackType == "DART_PORT" {
 			dart_api_dl.SendToPort(GetActiveSessions().port, "signerround", p.id, peerid, msgId)
 		}
@@ -130,6 +136,10 @@ func (p *SignerSession) OnStateChanged(oldState types.MainState, newState types.
 		if GetActiveSessions().callbackType == "PIPE" {
 			GetActiveSessions().pipeFile.WriteString(status + ":" + p.id + "\n")
 		}
+		if GetActiveSessions().callbackType == "TCP" {
+			GetActiveSessions().tcpwriter.WriteString(status + ":" + p.id + "\n")
+			GetActiveSessions().tcpwriter.Flush()
+		}
 		if GetActiveSessions().callbackType == "DART_PORT" {
 			dart_api_dl.SendToPort(GetActiveSessions().port, status, p.id, "", "")
 		}
@@ -151,6 +161,11 @@ func (p *SignerSession) fetchSignerResult(result *signer.Result) error {
 func InitializeWithPipe(f *os.File) {
 	GetActiveSessions().pipeFile = f
 	GetActiveSessions().callbackType = "PIPE"
+}
+
+func InitializeWithTCPConnection(f *bufio.Writer) {
+	GetActiveSessions().tcpwriter = f
+	GetActiveSessions().callbackType = "TCP"
 }
 
 func InitializeSignerWithPort(port int64) {
