@@ -176,9 +176,9 @@ func NewDkgSession(s *C.char, n *C.char, threshold int, rank int, jsoncstr *C.ch
 	println("NewDkgSession........................" + sessionid)
 	println(peerJsonStr)
 
-	defer C.free(unsafe.Pointer(s))
-	defer C.free(unsafe.Pointer(jsoncstr))
-	defer C.free(unsafe.Pointer(n))
+	// C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(jsoncstr))
+	// C.free(unsafe.Pointer(n))
 
 	session := &DkgSession{
 		id:           sessionid,
@@ -221,8 +221,8 @@ func AddPeer(s *C.char, p *C.char, peerrank int) {
 	println(sessionid)
 
 	peerid := deepCopy(C.GoString(p))
-	defer C.free(unsafe.Pointer(s))
-	defer C.free(unsafe.Pointer(p))
+	// C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(p))
 
 	getActiveSessions().sessions[sessionid].peers[peerid] = &PeerInfo{
 		Id:   peerid,
@@ -259,10 +259,10 @@ func GetMessage(s *C.char, m *C.char) *C.char {
 	println("GetMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
-	defer C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(s))
 
 	msgid := deepCopy(C.GoString(m))
-	defer C.free(unsafe.Pointer(m))
+	// C.free(unsafe.Pointer(m))
 
 	bs := getActiveSessions().sessions[sessionid].messageBox[msgid]
 	println(bs.Type)
@@ -275,7 +275,7 @@ func GetMessage(s *C.char, m *C.char) *C.char {
 	println(string(jsonstr))
 
 	jsoncstr := C.CString(string(jsonstr))
-	// defer C.free(unsafe.Pointer(jsoncstr))
+	// // C.free(unsafe.Pointer(jsoncstr))
 	println("end GetMessage........................" + getActiveSessions().callbackType)
 
 	return jsoncstr
@@ -286,11 +286,11 @@ func HandleMessage(s *C.char, m *C.char) *C.char {
 	println("HandleMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
-	defer C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(s))
 	println(sessionid)
 
 	body := deepCopy(C.GoString(m))
-	defer C.free(unsafe.Pointer(m))
+	// C.free(unsafe.Pointer(m))
 	println(body)
 	// handle data
 	x := &dkg.Message{}
@@ -300,13 +300,13 @@ func HandleMessage(s *C.char, m *C.char) *C.char {
 	if err != nil {
 		println("Cannot unmarshal data", "err", err.Error())
 		errstr := C.CString(err.Error())
-		defer C.free(unsafe.Pointer(errstr))
+		// C.free(unsafe.Pointer(errstr))
 		return errstr
 	}
 	println(x.Type.String() + "_" + x.Id)
 	if getActiveSessions().sessions[sessionid].incomingMsgs[x.Type.String()+"_"+x.Id] != nil {
 		errstr := C.CString("Already handled \n" + x.Type.String() + "_" + x.Id)
-		defer C.free(unsafe.Pointer(errstr))
+		// C.free(unsafe.Pointer(errstr))
 		return errstr
 	}
 	printsessions()
@@ -316,12 +316,12 @@ func HandleMessage(s *C.char, m *C.char) *C.char {
 	if err != nil {
 		println("Cannot add message to DKG", "err", err)
 		errstr := C.CString(err.Error())
-		defer C.free(unsafe.Pointer(errstr))
+		// C.free(unsafe.Pointer(errstr))
 		return errstr
 	}
 	println("Added message to DKG")
 	errstr := C.CString("")
-	defer C.free(unsafe.Pointer(errstr))
+	// C.free(unsafe.Pointer(errstr))
 	return errstr
 }
 
@@ -337,7 +337,7 @@ func printsessions() {
 func GenerateKey(s *C.char) {
 	sessionid := deepCopy(C.GoString(s))
 	session := getActiveSessions().sessions[sessionid]
-	defer C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(s))
 	println("Generate Key........................" + getActiveSessions().callbackType)
 	// 1. Start a DKG process.
 	session.dkg.Start()
@@ -347,7 +347,7 @@ func GenerateKey(s *C.char) {
 func GetResult(s *C.char) *C.char {
 	sessionid := deepCopy(C.GoString(s))
 	session := getActiveSessions().sessions[sessionid]
-	defer C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(s))
 	if session.result == nil {
 		return C.CString(string("{}"))
 	}
@@ -364,7 +364,7 @@ func InitializeSignerWithPipe(s *C.char) int {
 	pipeFile := deepCopy(C.GoString(s))
 	println("Initialize........................" + pipeFile)
 
-	defer C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(s))
 	// os.Remove(pipeFile)
 	// syscall.Mkfifo(pipeFile, 0666)
 
@@ -397,10 +397,10 @@ func NewSignerSession(s *C.char, n *C.char, shareJson *C.char, messageToSign *C.
 	println("NewSignerSession........................" + sessionid)
 	println(messageToSign)
 	ksigner.NewSignerSession(sessionid, nodeid, shareJsonStr, messageToSignStr)
-	C.free(unsafe.Pointer(s))
-	C.free(unsafe.Pointer(messageToSign))
-	C.free(unsafe.Pointer(shareJson))
-	C.free(unsafe.Pointer(n))
+	// C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(messageToSign))
+	// C.free(unsafe.Pointer(shareJson))
+	// C.free(unsafe.Pointer(n))
 }
 
 //export GetSignerMessage
@@ -413,29 +413,29 @@ func GetSignerMessage(s *C.char, m *C.char) *C.char {
 
 	jsoncstr := C.CString(ksigner.GetMessage(sessionid, msgid))
 	// TODO
-	// defer C.free(unsafe.Pointer(jsoncstr))
+	// // C.free(unsafe.Pointer(jsoncstr))
 	println("end GetSignerMessage........................")
-	//C.free(unsafe.Pointer(s))
-	//C.free(unsafe.Pointer(m))
+	//// C.free(unsafe.Pointer(s))
+	//// C.free(unsafe.Pointer(m))
 	return jsoncstr
 }
 
 //export HandleSignerMessage
 func HandleSignerMessage(s *C.char, m *C.char) *C.char {
-	println("HandleMessage........................" + getActiveSessions().callbackType)
+	println("HandleSignerMessage........................" + getActiveSessions().callbackType)
 
 	sessionid := deepCopy(C.GoString(s))
-	// defer C.free(unsafe.Pointer(s))
+	// // C.free(unsafe.Pointer(s))
 	println(sessionid)
 
 	body := deepCopy(C.GoString(m))
-	// defer C.free(unsafe.Pointer(m))
+	// // C.free(unsafe.Pointer(m))
 	println(body)
 
 	err := ksigner.HandleMessage(sessionid, body)
 
 	errstr := C.CString(err)
-	// defer C.free(unsafe.Pointer(errstr))
+	// // C.free(unsafe.Pointer(errstr))
 	return errstr
 }
 
@@ -448,7 +448,7 @@ func Sign(s *C.char) {
 //export GetSignerResult
 func GetSignerResult(s *C.char) *C.char {
 	sessionid := deepCopy(C.GoString(s))
-	defer C.free(unsafe.Pointer(s))
+	// C.free(unsafe.Pointer(s))
 	return C.CString(string(ksigner.GetResult(sessionid)))
 }
 
