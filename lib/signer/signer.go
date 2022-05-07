@@ -13,6 +13,8 @@ import (
 	"os"
 	"reflect"
 	"sync"
+	"encoding/hex"
+	"strings"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/codebunt/dart_api_dl"
@@ -200,10 +202,16 @@ func NewSignerSession(sessionid string, nodeid string, sharejson string, message
 	}
 
 	result, _ := convertDKGResult(dkgResult)
-	ksigner, err := signer.NewSigner(session, result.PublicKey, paillier, result.Share, result.Bks, []byte(messageToSign), session)
+	println("***********************")
+	println(messageToSign)
+	println(len([]byte(messageToSign)))
+	msgHex , _ := HexToBytes(messageToSign)
+	println(len(msgHex))
+	ksigner, err := signer.NewSigner(session, result.PublicKey, paillier, result.Share, result.Bks,msgHex, session)
 	if err != nil {
 		println(err.Error())
 	}
+	println("***********************")
 
 	session.signer = ksigner
 
@@ -306,4 +314,9 @@ func GetResult(sessionid string) string {
 		return string("{}")
 	}
 	return string(jsonbytes)
+}
+
+func HexToBytes(data string) ([]byte, error) {
+	cleaned := strings.Replace(data, "0x", "", -1)
+	return hex.DecodeString(cleaned)
 }
