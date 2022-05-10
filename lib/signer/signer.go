@@ -7,14 +7,14 @@ import "C"
 
 import (
 	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"math/big"
 	"os"
 	"reflect"
-	"sync"
-	"encoding/hex"
 	"strings"
+	"sync"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/codebunt/dart_api_dl"
@@ -53,12 +53,13 @@ type ActiveSessions struct {
 	pipeFile     *os.File
 	callbackType string
 	port         int64
-	tcpwriter	 *bufio.Writer
+	tcpwriter    *bufio.Writer
 }
 
 type SignerResult struct {
-	R string `json:"r"`
-	S string `json:"s"`
+	R   string `json:"r"`
+	S   string `json:"s"`
+	Sig string `json:"sig"`
 }
 
 func GetActiveSessions() *ActiveSessions {
@@ -153,8 +154,9 @@ func (p *SignerSession) OnStateChanged(oldState types.MainState, newState types.
 
 func (p *SignerSession) fetchSignerResult(result *signer.Result) error {
 	signerResult := &SignerResult{
-		R: result.R.String(),
-		S: result.S.String(),
+		R:   result.R.String(),
+		S:   result.S.String(),
+		Sig: hex.EncodeToString(result.EthSignature()),
 	}
 	p.result = signerResult
 	return nil
@@ -205,9 +207,9 @@ func NewSignerSession(sessionid string, nodeid string, sharejson string, message
 	println("***********************")
 	println(messageToSign)
 	println(len([]byte(messageToSign)))
-	msgHex , _ := HexToBytes(messageToSign)
+	msgHex, _ := HexToBytes(messageToSign)
 	println(len(msgHex))
-	ksigner, err := signer.NewSigner(session, result.PublicKey, paillier, result.Share, result.Bks,msgHex, session)
+	ksigner, err := signer.NewSigner(session, result.PublicKey, paillier, result.Share, result.Bks, msgHex, session)
 	if err != nil {
 		println(err.Error())
 	}
