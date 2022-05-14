@@ -58,8 +58,10 @@ type ActiveSessions struct {
 
 type SignerResult struct {
 	R   string `json:"r"`
+	Ry  string `json:"ry"`
 	S   string `json:"s"`
 	Sig string `json:"sig"`
+	N   string `json:"n"`
 }
 
 func GetActiveSessions() *ActiveSessions {
@@ -154,8 +156,10 @@ func (p *SignerSession) OnStateChanged(oldState types.MainState, newState types.
 
 func (p *SignerSession) fetchSignerResult(result *signer.Result) error {
 	signerResult := &SignerResult{
-		R:   result.R.String(),
+		R:   result.R.GetX().String(),
 		S:   result.S.String(),
+		Ry:  result.R.GetY().String(),
+		N:   result.R.GetCurve().Params().N.String(),
 		Sig: hex.EncodeToString(result.EthSignature()),
 	}
 	p.result = signerResult
